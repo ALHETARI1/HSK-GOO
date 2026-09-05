@@ -5857,31 +5857,40 @@ function searchVocab(query) {
     }
 }
 
-let currentUtterance = null; // لازم مرجع خارجي وإلا Chrome يجمّعه كـ garbage قبل ما ينطق
+let currentAudio = null; // مرجع للملف الصوتي الحالي، يمنع تشغيل أكثر من صوت بنفس الوقت
 
 function speakCurrent() {
     const filtered = getFiltered();
     if (!filtered.length) return;
     const item = filtered[currentIndex];
-    if (!window.speechSynthesis) {
-        showToast('⚠️ المتصفح لا يدعم النطق الصوتي');
-        return;
+
+    // إيقاف أي صوت سابق شغّال قبل تشغيل الجديد
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
     }
 
-    // إلغاء أي نطق عالق في الطابور قبل البدء من جديد
-    window.speechSynthesis.cancel();
+    const paddedId = String(item.id).padStart(4, '0');
+    const audio = new Audio(`audio/${paddedId}.mp3`);
+    currentAudio = audio;
 
-    const utterance = new SpeechSynthesisUtterance(item.ch);
-    utterance.lang = 'zh-CN';
-    utterance.rate = 0.9;
+    audio.addEventListener('error', () => {
+        // خطة احتياطية: لو ملف الصوت الجاهز ما توفر لأي سبب، نرجع لصوت المتصفح
+        if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(item.ch);
+            utterance.lang = 'zh-CN';
+            utterance.rate = 0.9;
+            window.speechSynthesis.speak(utterance);
+        } else {
+            showToast('⚠️ تعذّر تشغيل النطق');
+        }
+    });
 
-    utterance.onerror = (e) => {
-        console.error('Speech error:', e.error);
-        showToast('⚠️ فشل النطق — تأكد من وجود صوت صيني مُثبّت في جهازك');
-    };
-
-    currentUtterance = utterance; // الاحتفاظ بمرجع خارجي
-    window.speechSynthesis.speak(utterance);
+    audio.play().catch(() => {
+        // بعض المتصفحات تمنع التشغيل التلقائي بدون تفاعل مباشر من المستخدم
+        showToast('⚠️ اضغط زر النطق مباشرة لتشغيل الصوت');
+    });
 }
 
 function toggleFavorite() {
